@@ -35,9 +35,10 @@ const recordGameResult = (userId, gameId, difficulty, isWin, timeSpent, customSc
     const newSumTime = stats.sum_time_spent + timeSpent;
     const newSingleTime = currentSingleTime + timeSpent;
     const newSumNum = stats.sum_num_of_game + play_count;
-    const newWinNum = isWin ? stats.win_num_of_game + win_count : stats.win_num_of_game;
+    const newWinNum = isWin ? (stats.win_num_of_game + win_count) : stats.win_num_of_game;
     const newWinRate = newSumNum > 0 ? (newWinNum / newSumNum) : 0; 
     console.log('计算之后的轮数：',newSumNum,',',newWinNum)
+    console.log('-------------------------------------------------------')
     dayTimeDict[todayDate] = (dayTimeDict[todayDate] || 0) + timeSpent;
     monthTimeDict[currentWeek] = (monthTimeDict[currentWeek] || 0) + timeSpent;
 
