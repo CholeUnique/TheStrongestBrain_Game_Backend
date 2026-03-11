@@ -1,4 +1,6 @@
 //《你画我猜》游戏逻辑
+const { authenticateToken } = require('../auth');
+const { recordGameResult } = require('../../utils/gameEngine');
 
 const drawGuessTopics = [
   // 日常物品
@@ -34,6 +36,7 @@ let gameState = {
     currentWord: "",
     winRounds: 0,      // 赢的轮数
     totalRounds: 0,    // 总轮数
+    score:0,           // 分数
     startTime: null,   // 用于记录总花费时间
     players: {}        // 记录在线玩家 { socketId: userId }
 };
@@ -57,6 +60,7 @@ module.exports = (io) => {
         socket.emit('init-game', {
             word: gameState.currentWord,
             winRounds: gameState.winRounds,
+            score: gameState.score,
             totalRounds: gameState.totalRounds,
             startTime: gameState.startTime
         });
@@ -81,10 +85,13 @@ module.exports = (io) => {
                 winnerId: gameState.players[socket.id],
                 winRounds: gameState.winRounds,
                 totalRounds: gameState.totalRounds,
+                score: gameState.score ++,
                 nextWord: nextWord,
                 timeSpent: timeSpent,
                 msg: `🎉 猜对了！答案是 [${guess}]`
             });
+            // userId, gameId, difficulty, isWin, timeSpent, customScore = null, playCount = null, winCount = null
+            recordGameResult(gameState.players[socket.id], 'draw-guess', 1, true, gameState.totalRounds, gameState.score, gameState.totalRounds, gameState.winRounds)
         }
     });
 
@@ -99,6 +106,7 @@ module.exports = (io) => {
             nextWord: nextWord,
             msg: "这题太难了，跳过！"
         });
+        recordGameResult(gameState.players[socket.id], 'draw-guess', 1, false, gameState.totalRounds, 0, gameState.totalRounds, 0)
     });
 
     socket.on('disconnect', () => {
