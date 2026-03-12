@@ -36,7 +36,7 @@ const rooms = {}; // 存储房间状态: { roomId: { word, painterId, players: {
 const getRandomTopic = () => {
     return drawGuessTopics[Math.floor(Math.random() * drawGuessTopics.length)];
 };
-// recordGameResult(userId, gameId, difficulty, isWin, timeSpent, customScore = null, playCount = null, winCount = null)
+
 const saveRoomStats = (roomId, isWin) => {
     const room = rooms[roomId];
     if (!room) return;
@@ -58,8 +58,8 @@ const saveRoomStats = (roomId, isWin) => {
             room.totalRounds,   // playCount: 总游玩轮数
             room.winRounds      // winCount: 胜利轮数
         );
-        
     });
+    room.startTime = Date.now();
 };
 
 module.exports = (io) => {
@@ -79,7 +79,6 @@ module.exports = (io) => {
           winRounds: 0,
           totalRounds: 1,
           startTime: Date.now(),
-          timeSpent:0,
         };
       }
       
@@ -92,7 +91,7 @@ module.exports = (io) => {
         score:rooms[roomId].score,
         winRounds: rooms[roomId].winRounds,
         totalRounds: rooms[roomId].totalRounds,
-        timespent:rooms[roomId].timeSpent
+        startTime: rooms[roomId].startTime,
       });
 
       // 告诉房间里其他人有新队友
@@ -107,12 +106,10 @@ module.exports = (io) => {
     socket.on('submit-guess', ({ roomId, guess }) => {
         const room = rooms[roomId];
         if (!room || room.players[socket.id].role === 'painter') return; // 画家不能猜
-        const timeSpent = Math.floor((Date.now() - rooms[roomId].startTime) / 1000);
+
         room.totalRounds += 1;
-        room.timespent = timeSpent;
 
         if (guess.trim() === room.word) {
-            // 计算当前总耗时（秒）
             room.winRounds += 1;
             room.score += 1;
             saveRoomStats(roomId, true);
@@ -130,7 +127,7 @@ module.exports = (io) => {
                     score:room.score,
                     winRounds: room.winRounds,
                     totalRounds: room.totalRounds,
-                    timespent:0,//清空时间
+                    startTime:room.startTime
                 });
             });
         }
@@ -139,20 +136,25 @@ module.exports = (io) => {
 
     // 跳过题目 (算作输了一轮)
     socket.on('skip-word', ({ roomId }) => {
-        if (!roomId) return;
-        roomId.totalRounds += 1; // 输了两人一起不加分，但总轮数加1
+        const room = rooms[roomId]; // 注意：你原代码这里写的是 roomId.totalRounds，应该是 rooms[roomId]
+        if (!room) return;
+
+        room.totalRounds += 1; // 输了两人一起不加分，但总轮数加1
+        saveRoomStats(roomId, false);
+
         const nextWord = getRandomTopic();
-        roomId.word = nextWord;
+        room.word = nextWord;
         
         // 仅向该房间广播跳过信息
         io.to(roomId).emit('round-skip', {
-            totalRounds: roomId.totalRounds,
-            nextWord: nextWord, // 此时后端会自动处理身份，画家看得到词，猜题者看 ???
+            totalRounds: room.totalRounds,
+            nextWord: room.word, // 此时后端会自动处理身份，画家看得到词，猜题者看 ???
+            startTime : room.startTime,
             msg: "这题太难了，跳过！"
         });
 
-        // 重点：当“跳过”或“输了”时，分别记录每个房间内玩家的数据
-        saveRoomStats(roomId, false);
+        
+ ;
         
     });
 
