@@ -59,6 +59,7 @@ const saveRoomStats = (roomId, isWin) => {
             room.winRounds      // winCount: 胜利轮数
         );
     });
+    console.log('目前 本局游戏的详情如下：', '赢了吗？',isWin,',总耗时：',timeSpent,',游玩轮数：',room.totalRounds,',分数',room.score,'，胜利轮数：',room.winRounds)
     room.startTime = Date.now();
 };
 
@@ -67,8 +68,12 @@ module.exports = (io) => {
 
     // --- 核心：加入房间 ---
     socket.on('join-room', ({ roomId, userId, role }) => {
+      if (!userId) {
+        console.error("收到空的 userId，请检查前端 localStorage");
+        return;
+      }
       socket.join(roomId);
-      
+      socket.userId = userId;
       // 如果房间不存在，初始化房间
       if (!rooms[roomId]) {
         rooms[roomId] = {
@@ -84,12 +89,19 @@ module.exports = (io) => {
       
       rooms[roomId].players[socket.id] = { userId, role };
       if (role === 'painter') rooms[roomId].painterId = socket.id;
+      const existingPainter = Object.values(rooms[roomId].players).find(p => p.role === 'painter');
+      if (role === 'painter' && existingPainter) {
+        role = 'guesser'; // 强制转换
+        socket.emit('role-auto-adjust', { newRole: 'guesser', msg: '画师位置已满，你将作为神探加入' });
+      }
       const playerCount = Object.keys(rooms[roomId].players).length;
 
       if (playerCount < 2) {
         // 只有一个人，通知他继续等待
         socket.emit('waiting-partner', { msg: '正在等待好友加入...' });
+        console.log('现在只有', playerCount, '人，还需等待')
       }else {
+        console.log('《你画我猜》游戏开始，房间号：', roomId, '玩家', socket.id)
         // 满两个人了，正式开局！给房间里所有人发 init-game
         io.to(roomId).emit('init-game', {
             // 这里逻辑要变：发给每个人时，要根据他们的 role 来决定 word
@@ -101,19 +113,21 @@ module.exports = (io) => {
             word: rooms[roomId].word // 前端会根据身份自行遮蔽
         });
       }
-    
+    })
       // 轨迹同步
     socket.on('draw-line', (data) => socket.to(data.roomId).emit('draw-line', data));
     socket.on('clear-canvas', () => socket.to(data.roomId).emit('clear-canvas'));
 
     // 猜题逻辑 (协作模式：一人对，全队赢)
     socket.on('submit-guess', ({ roomId, guess }) => {
+        console.log('提交结果')
         const room = rooms[roomId];
         if (!room || room.players[socket.id].role === 'painter') return; // 画家不能猜
 
         room.totalRounds += 1;
 
         if (guess.trim() === room.word) {
+            console.log('成功！')
             room.winRounds += 1;
             room.score += 1;
             saveRoomStats(roomId, true);
