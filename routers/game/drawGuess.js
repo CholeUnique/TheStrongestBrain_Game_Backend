@@ -66,14 +66,14 @@ module.exports = (io) => {
   io.on('connection', (socket) => {
 
     // --- 核心：加入房间 ---
-    socket.on('join-room', ({ roomId, userId }) => {
+    socket.on('join-room', ({ roomId, userId, role }) => {
       socket.join(roomId);
       
       // 如果房间不存在，初始化房间
       if (!rooms[roomId]) {
         rooms[roomId] = {
           word: drawGuessTopics[Math.floor(Math.random() * drawGuessTopics.length)],
-          painterId: socket.id, // 第一个进房间的人默认是画家
+          painterId: null, // 身份待定
           players: {},
           score:0,
           winRounds: 0,
@@ -82,23 +82,27 @@ module.exports = (io) => {
         };
       }
       
-      rooms[roomId].players[socket.id] = { userId, role: socket.id === rooms[roomId].painterId ? 'painter' : 'guesser' };
+      rooms[roomId].players[socket.id] = { userId, role };
+      if (role === 'painter') rooms[roomId].painterId = socket.id;
+      const playerCount = Object.keys(rooms[roomId].players).length;
 
-      // 只给当前玩家发送初始化信息（包含他的身份）
-      socket.emit('init-game', {
-        role: rooms[roomId].players[socket.id].role,
-        word: rooms[roomId].players[socket.id].role === 'painter' ? rooms[roomId].word : '???', // 猜题者看不到词
-        score:rooms[roomId].score,
-        winRounds: rooms[roomId].winRounds,
-        totalRounds: rooms[roomId].totalRounds,
-        startTime: rooms[roomId].startTime,
-      });
-
-      // 告诉房间里其他人有新队友
-      io.to(roomId).emit('player-update', rooms[roomId].players);
-    });
-
-    // 轨迹同步
+      if (playerCount < 2) {
+        // 只有一个人，通知他继续等待
+        socket.emit('waiting-partner', { msg: '正在等待好友加入...' });
+      }else {
+        // 满两个人了，正式开局！给房间里所有人发 init-game
+        io.to(roomId).emit('init-game', {
+            // 这里逻辑要变：发给每个人时，要根据他们的 role 来决定 word
+            // 所以我们可以遍历房间成员分别 emit，或者在前端根据自己的 role 过滤
+            winRounds: rooms[roomId].winRounds,
+            totalRounds: rooms[roomId].totalRounds,
+            score:rooms[roomId].score,
+            startTime: rooms[roomId].startTime,
+            word: rooms[roomId].word // 前端会根据身份自行遮蔽
+        });
+      }
+    
+      // 轨迹同步
     socket.on('draw-line', (data) => socket.to(data.roomId).emit('draw-line', data));
     socket.on('clear-canvas', () => socket.to(data.roomId).emit('clear-canvas'));
 
